@@ -18,6 +18,7 @@ let
   };
 
   isAarch64Darwin = stdenv.hostPlatform.system == "aarch64-darwin";
+  isAarch64Linux = stdenv.hostPlatform.system == "aarch64-linux";
 
   # Keep the workspace locked through uv2nix, but supply the local voice stack
   # from nixpkgs so wheel-only transitive artifacts do not break evaluation.
@@ -51,7 +52,7 @@ let
     ] (_: null));
 
   pythonPackageOverrides = final: _prev:
-    if isAarch64Darwin then {
+    (if isAarch64Darwin then {
       numpy = mkPrebuiltOverride final python312.pkgs.numpy { };
 
       pyarrow = mkPrebuiltOverride final python312.pkgs.pyarrow { };
@@ -83,7 +84,15 @@ let
         tokenizers = [ ];
         tqdm = [ ];
       };
-    } else {};
+    } else {})
+    // (if isAarch64Linux then {
+      # Torch's oneDNN (MKL-DNN) runtime crashes on ARM (e.g. Raspberry Pi 4
+      # Cortex-A72) due to missing x86 SIMD instructions. Disable it system-wide
+      # for the sealed venv.
+      torch = mkPrebuiltOverride final (python312.pkgs.torch.override {
+        mklDnnSupport = false;
+      }) { };
+    } else {});
 
   pythonSet =
     (callPackage pyproject-nix.build.packages {
